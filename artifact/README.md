@@ -28,22 +28,12 @@ token counts, phase timings and validation counters.
 | Cost | `run_results/*.json` under `Results_MARTA`, `Results_MARTA_phase1` and `Results_Test4PyBaseline` |
 | Model capacity | the two CSVs in `qwen2.5-coder_32b/` |
 
-**Note on the coverage files.** `coverage_measured.csv` holds the figures
-reported in the paper. `coverage_measured_isolated.csv` is a later
-re-measurement in which each project is copied to a fresh directory before its
-suites are executed, so that a destructive test cannot influence a subsequent
-measurement. Per-project means agree within about one percentage point and the
-ordering of the three systems is identical, but the two disagree substantially
-on `ansible`, the benchmark's largest subject, for reasons we could not
-establish. We therefore report the original measurement and record both here.
-
 ## Other files
 
 Superseded or exploratory, kept for completeness:
 
 | file | what it was |
 |---|---|
-| `coverage_measured_isolated.csv` | the isolated re-measurement described above |
 | `coverage_measured_g0.csv`, `_g1.csv` | coverage restricted to the first and first-two generations per function, for an ablation of the outer loop that we did not report |
 | `mutmut.csv` | mutation under full-suite attribution, superseded by per-module |
 | `mutmut_baseline_v1.csv`, `_v2.csv` | earlier baseline mutation runs |

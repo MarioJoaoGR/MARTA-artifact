@@ -1,0 +1,217 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+%labels
+    Maintainer Mario
+    Description MARTA benchmark CM — Pynguin + Test4Py-baseline + MARTA (DeepSeek 16B/236B)
+    Version 1.0
+
+%post
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+
+    # -------------------------------------------------------------------
+    # 1. SISTEMA + DEPS BASE
+    # -------------------------------------------------------------------
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl wget git \
+        build-essential pkg-config \
+        python3.10 python3.10-venv python3.10-dev python3-pip \
+        libgomp1 \
+        zstd \
+        && rm -rf /var/lib/apt/lists/*
+
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+    # -------------------------------------------------------------------
+    # 2. MINICONDA (para gerir os 3 envs)
+    # -------------------------------------------------------------------
+    cd /tmp
+    wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+    bash miniconda.sh -b -p /opt/conda
+    rm miniconda.sh
+    /opt/conda/bin/conda config --set always_yes yes --set changeps1 no
+    # Anaconda introduziu Terms of Service em 2024 para os channels default.
+    # Aceitar para que conda create/update funcione sem prompt interactivo.
+    /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    # Update não é estritamente necessário (miniconda já vem recente). Skip
+    # para evitar tempo extra de build e potenciais erros de transação.
+    # /opt/conda/bin/conda update -n base conda
+
+    # -------------------------------------------------------------------
+    # 3. CRIAR OS 3 ENVS (replica setup local)
+    # -------------------------------------------------------------------
+    # pynguin_env
+    /opt/conda/bin/conda create -n pynguin_env python=3.10 pip setuptools
+    /opt/conda/envs/pynguin_env/bin/pip install --no-cache-dir pynguin coverage
+
+    # test4py_baseline_env (todas as deps da MARTA — superset)
+    /opt/conda/bin/conda create -n test4py_baseline_env python=3.10 pip setuptools
+    # setuptools < 80 garante pkg_resources (necessário para pycg do baseline)
+    /opt/conda/envs/test4py_baseline_env/bin/pip install --no-cache-dir "setuptools<80"
+
+    # test4py_env (MARTA — mesmas deps que baseline + qualquer extra)
+    /opt/conda/bin/conda create -n test4py_env python=3.10 pip setuptools
+    /opt/conda/envs/test4py_env/bin/pip install --no-cache-dir "setuptools<80"
+
+    # -------------------------------------------------------------------
+    # 3a. Pre-baked: deps da MARTA / Test4Py-baseline + 27 projetos CM
+    # -------------------------------------------------------------------
+    # Apt extras necessários para algumas deps (build/cython)
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        gcc g++ make \
+        libffi-dev libssl-dev \
+        libxml2-dev libxslt1-dev \
+        zlib1g-dev \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Garantir que git NUNCA pede credenciais interactivamente — qualquer
+    # clone que precisaria de auth falha imediatamente em vez de bloquear
+    # o build à espera de input. Crítico em modo non-interactive (--fakeroot).
+    export GIT_TERMINAL_PROMPT=0
+    export GIT_ASKPASS=/bin/true
+    git config --global credential.helper ""
+
+    # Clonar codamosa benchmark TEMPORARIAMENTE (só para extrair os sources
+    # dos 27 projetos e fazer pip install). Mais à frente apagamos.
+    git clone --depth 1 https://github.com/microsoft/codamosa.git /tmp/codamosa
+    # Os 27 projetos não estão no repo do codamosa em si — vêm via
+    # docker container. Como não podemos correr docker dentro do .sif,
+    # clonamos UM-A-UM via URLs hardcoded (mesma lista que o setup_test_apps.sh
+    # do codamosa usa).
+    mkdir -p /tmp/test-apps
+    cd /tmp/test-apps
+    # Lista dos 27 projetos do CM (extraída do modules_base_and_name.csv).
+    # Cada linha: nome_do_projeto git_url commit_hash_or_branch
+    cat > /tmp/cm_repos.txt <<'EOF'
+PySnooper https://github.com/cool-RR/PySnooper.git
+apimd https://github.com/KmolYuan/apimd.git
+codetiming https://github.com/realpython/codetiming.git
+cookiecutter https://github.com/cookiecutter/cookiecutter.git
+dataclasses-json https://github.com/lidatong/dataclasses-json.git
+docstring_parser https://github.com/rr-/docstring_parser.git
+flutes https://github.com/huzecong/flutes.git
+flutils https://gitlab.com/mburkard/flutils.git
+httpie https://github.com/httpie/cli.git
+isort https://github.com/PyCQA/isort.git
+mimesis https://github.com/lk-geimfari/mimesis.git
+py-backwards https://github.com/nvbn/py-backwards.git
+pyMonet https://github.com/przemyslawjanpietrzak/pyMonet.git
+pypara https://github.com/vst/pypara.git
+python-semantic-release https://github.com/python-semantic-release/python-semantic-release.git
+python-string-utils https://github.com/daveoncode/python-string-utils.git
+pytutils https://github.com/tehmaze/pytutils.git
+sanic https://github.com/sanic-org/sanic.git
+sty https://github.com/feluxe/sty.git
+thefuck https://github.com/nvbn/thefuck.git
+thonny https://github.com/thonny/thonny.git
+tornado https://github.com/tornadoweb/tornado.git
+tqdm https://github.com/tqdm/tqdm.git
+typesystem https://github.com/encode/typesystem.git
+youtube-dl https://github.com/ytdl-org/youtube-dl.git
+ansible https://github.com/ansible/ansible.git
+black https://github.com/psf/black.git
+EOF
+
+    # Clonar cada projeto (--depth 1 para poupar disco).
+    # Continuar mesmo se um falhar (algumas urls podem ter mudado de 2023).
+    while read name url; do
+        echo "→ A clonar $name..."
+        git clone --depth 1 "$url" "/tmp/test-apps/$name" 2>&1 | tail -2 || \
+            echo "⚠️  CLONE FALHOU para $name — continua sem este (pode ser path diferente em runtime)"
+    done < /tmp/cm_repos.txt
+
+    # Para cada env, instalar cada um dos 27 projetos (com deps runtime
+    # próprias mas SEM build isolation — usamos os build backends já
+    # disponíveis: flit_core, hatchling, setuptools).
+    for env in pynguin_env test4py_baseline_env test4py_env; do
+        PIP=/opt/conda/envs/$env/bin/pip
+        # Garantir build backends comuns para projetos modernos
+        $PIP install --no-cache-dir flit_core hatchling poetry-core build
+
+        for proj_dir in /tmp/test-apps/*/; do
+            proj_name=$(basename "$proj_dir")
+            echo "→ [$env] pip install $proj_name..."
+            # --no-build-isolation: usar build backends já instalados (mais rápido)
+            # || true: alguns projetos podem falhar (ex: ansible com deps pesadas);
+            #         deixar continuar — em runtime usa-se PYTHONPATH para esses
+            $PIP install --no-cache-dir --no-build-isolation "$proj_dir" 2>&1 | tail -1 \
+                || echo "⚠️  [$env] $proj_name falhou — vai usar PYTHONPATH em runtime"
+        done
+    done
+
+    # Cleanup do clone temporário (a codamosa benchmark "real" vem via bind-mount
+    # em runtime de /opt/marta/baselines/codamosa/).
+    cd /   # Sair de qualquer subdir antes de a apagarmos (getcwd() failed senão)
+    rm -rf /tmp/codamosa /tmp/test-apps /tmp/cm_repos.txt
+
+    # -------------------------------------------------------------------
+    # 4. OLLAMA (binary install, modelos vivem fora do .sif)
+    # -------------------------------------------------------------------
+    curl -fsSL https://ollama.com/install.sh | sh
+    # Modelos ficam em $OLLAMA_MODELS (env var) — definido no job script
+    # apontando para /projects/.../ollama_models/ (persistência entre jobs)
+
+    # -------------------------------------------------------------------
+    # 5. CACHE HUGGINGFACE PARA O EMBEDDING DO RAG (BAAI/bge-large-en-v1.5)
+    # -------------------------------------------------------------------
+    # Pre-fetch o modelo de embeddings para dentro do .sif (1.2 GB) para
+    # evitar re-download a cada job. Vai para $HF_HOME default = ~/.cache/huggingface.
+    /opt/conda/envs/test4py_env/bin/pip install --no-cache-dir huggingface-hub
+    HF_HOME=/opt/hf_cache /opt/conda/envs/test4py_env/bin/python -c "
+from huggingface_hub import snapshot_download
+snapshot_download('BAAI/bge-large-en-v1.5', cache_dir='/opt/hf_cache/hub')
+print('  ✓ BAAI/bge-large-en-v1.5 cached em /opt/hf_cache/')
+"
+
+    # -------------------------------------------------------------------
+    # 6. CLEANUP
+    # -------------------------------------------------------------------
+    /opt/conda/bin/conda clean -afy
+    # APENAS o pip cache de root — NÃO mexer em /tmp/* porque:
+    #  1. /tmp/codamosa, /tmp/test-apps já foram removidos acima
+    #  2. /tmp/* contém o próprio build-temp do Singularity (rootfs em uso)
+    #  3. Coisas do sistema (systemd, etc.) podem estar em /tmp sem
+    #     permissão para apagar em modo fakeroot
+    rm -rf /root/.cache/pip || true
+
+%environment
+    # Pythons dos 3 envs no PATH (escolhe-se via prefixo absoluto no script)
+    export PATH=/opt/conda/bin:$PATH
+    export OLLAMA_KEEP_ALIVE=24h
+    export OLLAMA_NUM_PARALLEL=1
+    # MLA do DeepSeek-Coder-V2 tem caminho LENTO no flash-attention do llama.cpp
+    # (0.15 tok/s com FA on vs 165 tok/s com FA off no A100). Manter DESLIGADO.
+    export OLLAMA_FLASH_ATTENTION=0
+    export OLLAMA_MAX_LOADED_MODELS=1
+    export ANONYMIZED_TELEMETRY=False
+    export CHROMA_TELEMETRY_IMPL=None
+    # HF: usa o cache pre-baked do .sif
+    export HF_HOME=/opt/hf_cache
+    export TRANSFORMERS_OFFLINE=0
+
+%help
+    Singularity container para o benchmark MARTA na suite CM (486 módulos).
+
+    Tools incluídas (via envs conda):
+      - pynguin_env          → /opt/conda/envs/pynguin_env/bin/python
+      - test4py_baseline_env → /opt/conda/envs/test4py_baseline_env/bin/python
+      - test4py_env (MARTA)  → /opt/conda/envs/test4py_env/bin/python
+
+    Ollama instalado em /usr/local/bin/ollama; modelos vivem em $OLLAMA_MODELS
+    (bind-mount externo).
+
+    Código MARTA NÃO está dentro do .sif — vem via bind-mount em /opt/marta.
+
+    O dataset CM (27 projetos) também é bind-mount, NÃO está dentro do .sif.
+
+    Uso típico (de dentro do job SLURM):
+      singularity exec --nv \
+        --bind /projects/.../MARTA:/opt/marta \
+        --bind /projects/.../ollama_models:/data/ollama \
+        --env OLLAMA_MODELS=/data/ollama \
+        marta_benchmark.sif bash /opt/marta/deucalion/run_benchmark.sh

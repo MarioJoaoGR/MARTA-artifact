@@ -1,0 +1,16 @@
+{
+  "title": "MARTA: A Decoupled Multi-Agent Architecture for Python Test Generation",
+  "upload_type": "software",
+  "license": "MIT",
+  "description": "Artifact for the ICTSS 2026 paper <em>MARTA: A Decoupled Multi-Agent Architecture for Python Test Generation</em>.<p>MARTA is a Python regression test generation pipeline that separates abstract test planning from concrete test implementation. A Planner Agent designs logical test scenarios from a statically derived semantic context; an Assertion Agent translates each plan into a complete Pytest file. An execution-driven repair loop and a coverage-guided planning loop refine the result.</p><p>This archive contains the MARTA implementation, the measurement pipeline, the SLURM job scripts used to run the evaluation, the patch series applied to the single-prompt baseline, and the complete results: every generated test suite as delivered, the per-project token counts and phase timings, and the candidates MARTA discarded.</p><p>The evaluation covers 27 open-source Python projects (486 modules) from the benchmark introduced by Pynguin and subsequently used by CodaMosa and CoverUp, with DeepSeek-Coder-V2-Lite (16B) served locally, plus a ten-project subset with Qwen2.5-Coder-32B.</p>",
+  "creators": [
+    {"name": "Ribeiro, Mário", "orcid": "0009-0006-7681-2605",
+     "affiliation": "GECAD, ISEP, Polytechnic of Porto, Portugal"},
+    {"name": "Maia, Eva", "orcid": "0000-0002-8075-531X",
+     "affiliation": "GECAD, ISEP, Polytechnic of Porto, Portugal"},
+    {"name": "Praça, Isabel", "orcid": "0000-0002-2519-9859",
+     "affiliation": "GECAD, ISEP, Polytechnic of Porto, Portugal"}
+  ],
+  "keywords": ["automated test generation", "large language models",
+               "multi-agent systems", "software testing", "Python"]
+}

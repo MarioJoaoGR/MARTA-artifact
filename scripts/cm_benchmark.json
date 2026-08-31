@@ -1,6 +1,6 @@
 {
   "PySnooper": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/PySnooper",
+    "project_path": "baselines/codamosa/replication/test-apps/PySnooper",
     "source_path": "pysnooper",
     "modules": [
       "pysnooper.pycompat",
@@ -10,7 +10,7 @@
     ]
   },
   "ansible": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/ansible",
+    "project_path": "baselines/codamosa/replication/test-apps/ansible",
     "source_path": "lib",
     "modules": [
       "ansible.cli.adhoc",
@@ -253,7 +253,7 @@
     ]
   },
   "apimd": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/apimd",
+    "project_path": "baselines/codamosa/replication/test-apps/apimd",
     "source_path": "apimd",
     "modules": [
       "apimd.loader",
@@ -261,7 +261,7 @@
     ]
   },
   "black": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/black",
+    "project_path": "baselines/codamosa/replication/test-apps/black",
     "source_path": "src",
     "modules": [
       "blib2to3.pgen2.grammar",
@@ -273,14 +273,14 @@
     ]
   },
   "codetiming": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/codetiming",
+    "project_path": "baselines/codamosa/replication/test-apps/codetiming",
     "source_path": "codetiming",
     "modules": [
       "codetiming._timers"
     ]
   },
   "cookiecutter": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/cookiecutter",
+    "project_path": "baselines/codamosa/replication/test-apps/cookiecutter",
     "source_path": "cookiecutter",
     "modules": [
       "cookiecutter.find",
@@ -291,7 +291,7 @@
     ]
   },
   "dataclasses-json": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/dataclasses-json",
+    "project_path": "baselines/codamosa/replication/test-apps/dataclasses-json",
     "source_path": "dataclasses_json",
     "modules": [
       "dataclasses_json.cfg",
@@ -301,7 +301,7 @@
     ]
   },
   "docstring_parser": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/docstring_parser",
+    "project_path": "baselines/codamosa/replication/test-apps/docstring_parser",
     "source_path": "docstring_parser",
     "modules": [
       "docstring_parser.common",
@@ -312,7 +312,7 @@
     ]
   },
   "flutes": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/flutes",
+    "project_path": "baselines/codamosa/replication/test-apps/flutes",
     "source_path": "flutes",
     "modules": [
       "flutes.iterator",
@@ -321,7 +321,7 @@
     ]
   },
   "flutils": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/flutils",
+    "project_path": "baselines/codamosa/replication/test-apps/flutils",
     "source_path": "flutils",
     "modules": [
       "flutils.codecs.b64",
@@ -336,7 +336,7 @@
     ]
   },
   "httpie": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/httpie",
+    "project_path": "baselines/codamosa/replication/test-apps/httpie",
     "source_path": "httpie",
     "modules": [
       "httpie.cli.argparser",
@@ -361,7 +361,7 @@
     ]
   },
   "isort": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/isort",
+    "project_path": "baselines/codamosa/replication/test-apps/isort",
     "source_path": "isort",
     "modules": [
       "isort.exceptions",
@@ -369,7 +369,7 @@
     ]
   },
   "mimesis": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/mimesis",
+    "project_path": "baselines/codamosa/replication/test-apps/mimesis",
     "source_path": "mimesis",
     "modules": [
       "mimesis.builtins.en",
@@ -393,7 +393,7 @@
     ]
   },
   "py-backwards": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/py-backwards",
+    "project_path": "baselines/codamosa/replication/test-apps/py-backwards",
     "source_path": "py_backwards",
     "modules": [
       "py_backwards.compiler",
@@ -418,7 +418,7 @@
     ]
   },
   "pyMonet": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/pyMonet",
+    "project_path": "baselines/codamosa/replication/test-apps/pyMonet",
     "source_path": "pymonet",
     "modules": [
       "pymonet.box",
@@ -434,7 +434,7 @@
     ]
   },
   "pypara": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/pypara",
+    "project_path": "baselines/codamosa/replication/test-apps/pypara",
     "source_path": "pypara",
     "modules": [
       "pypara.accounting.journaling",
@@ -446,7 +446,7 @@
     ]
   },
   "python-semantic-release": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/python-semantic-release",
+    "project_path": "baselines/codamosa/replication/test-apps/python-semantic-release",
     "source_path": "semantic_release",
     "modules": [
       "semantic_release.ci_checks",
@@ -458,7 +458,7 @@
     ]
   },
   "python-string-utils": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/python-string-utils",
+    "project_path": "baselines/codamosa/replication/test-apps/python-string-utils",
     "source_path": "string_utils",
     "modules": [
       "string_utils.generation",
@@ -467,7 +467,7 @@
     ]
   },
   "pytutils": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/pytutils",
+    "project_path": "baselines/codamosa/replication/test-apps/pytutils",
     "source_path": "pytutils",
     "modules": [
       "pytutils.env",
@@ -485,7 +485,7 @@
     ]
   },
   "sanic": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/sanic",
+    "project_path": "baselines/codamosa/replication/test-apps/sanic",
     "source_path": "sanic",
     "modules": [
       "sanic.blueprint_group",
@@ -502,7 +502,7 @@
     ]
   },
   "sty": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/sty",
+    "project_path": "baselines/codamosa/replication/test-apps/sty",
     "source_path": "sty",
     "modules": [
       "sty.lib",
@@ -510,7 +510,7 @@
     ]
   },
   "thefuck": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/thefuck",
+    "project_path": "baselines/codamosa/replication/test-apps/thefuck",
     "source_path": "thefuck",
     "modules": [
       "thefuck.argument_parser",
@@ -548,7 +548,7 @@
     ]
   },
   "thonny": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/thonny",
+    "project_path": "baselines/codamosa/replication/test-apps/thonny",
     "source_path": "thonny",
     "modules": [
       "thonny.jedi_utils",
@@ -557,7 +557,7 @@
     ]
   },
   "tornado": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/tornado",
+    "project_path": "baselines/codamosa/replication/test-apps/tornado",
     "source_path": "tornado",
     "modules": [
       "tornado.auth",
@@ -576,7 +576,7 @@
     ]
   },
   "tqdm": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/tqdm",
+    "project_path": "baselines/codamosa/replication/test-apps/tqdm",
     "source_path": "tqdm",
     "modules": [
       "tqdm._tqdm_pandas",
@@ -591,7 +591,7 @@
     ]
   },
   "typesystem": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/typesystem",
+    "project_path": "baselines/codamosa/replication/test-apps/typesystem",
     "source_path": "typesystem",
     "modules": [
       "typesystem.base",
@@ -607,7 +607,7 @@
     ]
   },
   "youtube-dl": {
-    "project_path": "/Users/mario/Desktop/GECAD/Test4Py/baselines/codamosa/replication/test-apps/youtube-dl",
+    "project_path": "baselines/codamosa/replication/test-apps/youtube-dl",
     "source_path": "youtube_dl",
     "modules": [
       "youtube_dl.aes",

@@ -83,8 +83,33 @@ the included results alone, with no further setup:
 against the code under test, so they additionally need the benchmark subjects
 from the CodaMosa replication package, which are not vendored here.
 
-Regenerating the suites themselves requires a GPU and a locally served model;
-`deucalion/` contains the job scripts as they were run.
+## Reproducing the evaluation
+
+Regenerating the suites is not turnkey: the benchmark subjects and the two
+baselines are third-party and are not vendored here. Four pieces have to be put
+in place first.
+
+1. **Subjects.** Clone the CodaMosa replication package into
+   `baselines/codamosa`, so that the subjects sit under
+   `baselines/codamosa/replication/test-apps/<Project>`.
+2. **Single-prompt baseline.** Clone TEST4PY into
+   `baselines/test4py-baseline` and apply the series in `baselines/patches/`
+   with `git am`. Those changes are required for it to run at all in this
+   setting; see *Baselines* above.
+3. **Search-based baseline.** Install Pynguin. It is run with a 300 s search
+   budget per module and its default algorithm.
+4. **Configuration.** Run `python3 scripts/build_cm_config.py`, which rewrites
+   `scripts/cm_benchmark.json` with absolute paths for your checkout. The paths
+   shipped here are relative placeholders. Then copy `.env.example` to `.env`
+   and point it at your served model.
+
+With those in place, `scripts/run_benchmark.py` drives all three systems over
+the corpus and resumes from its own state file. `deucalion/` contains the SLURM
+job scripts as they were run on the cluster, including the container definition;
+they wrap the same harness and are useful mainly as a record of the environment.
+
+A full run needs a GPU and a locally served model. The 27-project evaluation
+took roughly 40 GPU-hours for MARTA and 80 for the single-prompt baseline.
 
 ## License
 

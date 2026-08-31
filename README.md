@@ -51,6 +51,14 @@ obtained from their own repositories; `baselines/` records how they were
 configured and patched for this evaluation. The benchmark subjects come from the
 CodaMosa replication package.
 
+## Configuration
+
+The pipeline reads its model and embedder settings from a `.env` file in the
+repository root. Copy `.env.example` to `.env` and adjust the endpoint if you
+serve the model elsewhere; the values shipped are the ones used in the
+evaluation. Without it, importing the package fails, since the embedder path is
+read at import time.
+
 ## Reproducing a measurement
 
 The measurement scripts read a results directory and recompute the reported

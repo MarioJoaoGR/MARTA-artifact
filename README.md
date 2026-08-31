@@ -71,12 +71,17 @@ read at import time.
 
 ## Reproducing a measurement
 
-The measurement scripts read a results directory and recompute the reported
-figures. For example, over the included results:
+Copy `.env.example` to `.env` first. These four recompute reported figures from
+the included results alone, with no further setup:
 
-    python3 scripts/measure_coverage.py --results artifact/results/deepseek-coder-v2_16b --tool all
     python3 scripts/analyze_test_quality.py --results artifact/results/deepseek-coder-v2_16b --projects projects.json
     python3 scripts/generation_efficiency.py --results artifact/results/deepseek-coder-v2_16b
+    python3 scripts/per_module_coverage.py  --results artifact/results/deepseek-coder-v2_16b --projects projects.json
+    python3 scripts/cost_breakdown.py       --results artifact/results/deepseek-coder-v2_16b
+
+`measure_coverage.py` and `run_mutmut_permodule.py` execute the delivered suites
+against the code under test, so they additionally need the benchmark subjects
+from the CodaMosa replication package, which are not vendored here.
 
 Regenerating the suites themselves requires a GPU and a locally served model;
 `deucalion/` contains the job scripts as they were run.

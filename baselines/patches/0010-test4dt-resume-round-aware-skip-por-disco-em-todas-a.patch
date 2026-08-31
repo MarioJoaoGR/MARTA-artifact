@@ -1,0 +1,53 @@
+From 63c1e3c9cbe214456760bb59588f7608d92ca768 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Thu, 23 Jul 2026 15:29:17 +0100
+Subject: [PATCH 10/11] test4dt: resume round-aware (skip por disco em todas as
+ rondas, nao so a 1a)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+O [SKIP] tinha 'and self.count == 0' -> so saltava a 1a ronda. Num restart a meio
+da ronda 3 (walltime SLURM no ansible, 237 mod) re-gerava as rondas 1 e 2 a
+chamar o LLM outra vez. test_path ja e indexado por len(testcases) (_0/_1/_2),
+por isso basta verificar a existencia do ficheiro DESTA ronda. Alinha com o fix
+round-aware da marta (04ab6743). Neutro quanto ao resultado (nao muda que testes
+se geram, so evita re-gerar os feitos).
+
+⚠️ NAO deployar no job do ansible em curso (30h de run) - so via scp ANTES do
+proximo re-run completo do baseline.
+---
+ test4dt/testcase.py | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/test4dt/testcase.py b/test4dt/testcase.py
+index 00a3a18..f2599a4 100644
+--- a/test4dt/testcase.py
++++ b/test4dt/testcase.py
+@@ -43,12 +43,16 @@ class TestManager:
+             if len(self.coverage.missing_lines) == 0:
+                 return
+         test_path = self.get_test_path()
+-        # Resume granularity: se o teste para esta função já existe em disco
+-        # (de uma run anterior interrompida por timeout/SIGTERM ex. no SLURM),
+-        # carrega-o sem voltar a chamar o LLM. Equivale ao mecanismo
+-        # [SKIP] da MARTA (testcase_react.py:112-117), simplificado por o
+-        # dataset CM ser imutável (não há hash-check necessário).
+-        if os.path.exists(test_path) and self.count == 0:
++        # Resume granularity ROUND-AWARE: test_path é indexado por
++        # len(self.testcases) (ver get_test_path) → cada ronda tem o SEU ficheiro
++        # (_0, _1, _2). Basta verificar a existência do ficheiro DESTA ronda para
++        # saltar sem re-chamar o LLM. Antes tinha `and self.count == 0` → só
++        # saltava a 1ª ronda; num restart a meio da ronda 3 (ex.: walltime SLURM
++        # no ansible, 237 mód) re-gerava as rondas 1 e 2 chamando o LLM outra vez.
++        # Alinha o baseline com o fix round-aware da MARTA (message_react commit
++        # 04ab6743). É neutro quanto ao RESULTADO (não muda que testes se geram,
++        # só evita re-gerar os já feitos) → não beneficia o baseline, só o custo.
++        if os.path.exists(test_path):
+             print(f"[SKIP] Teste para '{self.func.func_name}' já existe em disco, a saltar...")
+             self.testcases.append(Testcase.load_existing(self, self.func, test_path))
+             self.count += 1
+-- 
+2.55.0
+

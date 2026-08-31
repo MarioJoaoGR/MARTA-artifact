@@ -47,9 +47,19 @@ paper.
 
 The baselines are not vendored here. The single-prompt baseline is the
 generation module of TEST4PY and the search-based baseline is Pynguin, both
-obtained from their own repositories; `baselines/` records how they were
-configured and patched for this evaluation. The benchmark subjects come from the
+obtained from their own repositories. The benchmark subjects come from the
 CodaMosa replication package.
+
+`baselines/patches/` carries the twelve changes we applied to the single-prompt
+baseline, as a `git am` series against its upstream. They are corrections
+required to run it at all in our environment, not changes to how it generates:
+an import-root fix for projects whose source directory is a container rather
+than a package, a `PYTHONPATH` fix without which its syntax check reported every
+generated test as invalid, tolerance for non-UTF8 subprocess output and for
+deleted working directories, a device setting for the embedder, caching of its
+own Phase 1 analysis so that restarts do not repeat it, and a round-aware resume
+so that later rounds are not skipped. Applying them to a clean checkout of
+TEST4PY reproduces the baseline as we ran it.
 
 ## Configuration
 

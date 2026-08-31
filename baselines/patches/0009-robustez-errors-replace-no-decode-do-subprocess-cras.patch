@@ -1,0 +1,44 @@
+From 8d5e2a83daa6806c92dfabc18c10c3e0882edd65 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Tue, 21 Jul 2026 15:20:42 +0100
+Subject: [PATCH 09/11] robustez: errors='replace' no decode do subprocess
+ (crash UnicodeDecodeError)
+
+Modulos do ansible imprimem bytes nao-UTF8 -> decode do text=True lancava
+UnicodeDecodeError -> matava o run inteiro (994/1939, 13.5h perdidas). Mesmo fix
+aplicado ao marta (simetria). Infra, nao muda a geracao.
+---
+ test4dt/testcase.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/test4dt/testcase.py b/test4dt/testcase.py
+index ef4ffbe..00a3a18 100644
+--- a/test4dt/testcase.py
++++ b/test4dt/testcase.py
+@@ -305,7 +305,12 @@ class Testcase:
+         # syntax_error → 0 salvos → baseline inteira vazia. (bug encontrado 2026-07)
+         command = f'PYTHONPATH={root_dir}:$PYTHONPATH {user_python_path} -m pylint --errors-only --init-hook="import sys; sys.path.append(\'{root_dir}\')" {self.test_path}'
+ 
+-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
++        # errors='replace': o teste sob análise pode cuspir bytes não-UTF8 (ex.:
++        # módulos do ansible) e o decode do text=True lança UnicodeDecodeError,
++        # matando o RUN INTEIRO (ansible morreu a 994/1939 após 13.5h, job de
++        # 2026-07-20). Robustez de infra — não altera a geração.
++        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++                                text=True, errors='replace')
+         if result.returncode == 0:
+             return False
+         else:
+@@ -318,7 +323,7 @@ class Testcase:
+     def find_assert_error(self):
+         try:
+             result = subprocess.run([os.getenv('USER_PYTHON_PATH'), '-m', 'pytest', self.test_path, '--json-report', '--json-report-file=pytest_report.json'],
+-                                    capture_output=True, text=True, timeout=10)
++                                    capture_output=True, text=True, errors='replace', timeout=10)
+         except subprocess.TimeoutExpired:
+             self.error_message = "time exceeded"
+             recoder.score.add_assertion_error_type('TimeoutExpired')
+-- 
+2.55.0
+

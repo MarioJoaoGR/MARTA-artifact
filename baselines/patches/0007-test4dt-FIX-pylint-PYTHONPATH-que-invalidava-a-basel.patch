@@ -1,0 +1,97 @@
+From f8cf8e14e9333d783a1e492ed8f1620459bd55a2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sun, 5 Jul 2026 15:25:19 +0100
+Subject: [PATCH 07/11] test4dt: FIX pylint (PYTHONPATH) que invalidava a
+ baseline + contagem de tokens
+
+BUG CRITICO: find_syntax_error corria PYTHONPATH={root_dir} python -m pylint,
+substituindo o PYTHONPATH -> tirava os pydeps onde o pylint vive (nao esta no
+env conda) -> 'No module named pylint' -> returncode 1 -> TODOS os testes
+marcados syntax_error -> 0 salvos -> baseline inteira vazia (0 cobertura em
+todos os 27). Fix: PYTHONPATH={root_dir}:$PYTHONPATH (preserva os pydeps).
+Confirmado: com pylint no path, aceita testes validos (rc 0).
+
++ Contagem de tokens (porte do marta): gptapi.chat() le usage -> add_tokens;
+recorder.Score acumula prompt/completion e exporta total no run_results.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/gptapi.py   |  6 ++++++
+ test4dt/recorder.py | 11 ++++++++++-
+ test4dt/testcase.py |  6 +++++-
+ 3 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/test4dt/gptapi.py b/test4dt/gptapi.py
+index 057543e..8303f66 100644
+--- a/test4dt/gptapi.py
++++ b/test4dt/gptapi.py
+@@ -5,6 +5,8 @@ from aiolimiter import AsyncLimiter
+ import asyncio
+ import logging
+ 
++from test4dt.recorder import recoder
++
+ 
+ class MyGPT:
+     count = 0
+@@ -46,6 +48,10 @@ class MyGPT:
+             )
+             output = chat.choices[0].message.content
+             self.count += 1
++            usage = getattr(chat, 'usage', None)
++            if usage is not None:
++                recoder.score.add_tokens(getattr(usage, 'prompt_tokens', 0) or 0,
++                                         getattr(usage, 'completion_tokens', 0) or 0)
+         except BaseException as e:
+             logging.error(e)
+             return ""
+diff --git a/test4dt/recorder.py b/test4dt/recorder.py
+index c8297eb..6c64f3a 100644
+--- a/test4dt/recorder.py
++++ b/test4dt/recorder.py
+@@ -52,6 +52,12 @@ class Score:
+         self.assertion_fix_success = 0
+         self.assertion_error_types = {}
+         self.coverage = []
++        self.prompt_tokens = 0
++        self.completion_tokens = 0
++
++    def add_tokens(self, prompt, completion):
++        self.prompt_tokens += prompt
++        self.completion_tokens += completion
+ 
+     def add_syntax_pass(self):
+         self.syntax_pass += 1
+@@ -110,7 +116,10 @@ class Score:
+             'first_assertion_error': self.first_assertion_error,
+             'first_assertion_fix_success': self.first_assertion_fix_success,
+             'first_assertion_error_types': self.first_assertion_error_types,
+-            'coverage': self.coverage
++            'coverage': self.coverage,
++            'prompt_tokens': self.prompt_tokens,
++            'completion_tokens': self.completion_tokens,
++            'total_tokens': self.prompt_tokens + self.completion_tokens,
+         }
+ 
+     def get_coverage(self, coverage, project):
+diff --git a/test4dt/testcase.py b/test4dt/testcase.py
+index 277270e..ef4ffbe 100644
+--- a/test4dt/testcase.py
++++ b/test4dt/testcase.py
+@@ -299,7 +299,11 @@ class Testcase:
+         # 25 projetos normais.
+         root_dir = getattr(self.func.file.project, 'import_root', self.func.file.root_dir)
+         user_python_path = os.getenv('USER_PYTHON_PATH')
+-        command = f'PYTHONPATH={root_dir} {user_python_path} -m pylint --errors-only --init-hook="import sys; sys.path.append(\'{root_dir}\')" {self.test_path}'
++        # {root_dir}:$PYTHONPATH — preservar o PYTHONPATH existente (pydeps), senão
++        # a override tirava o pylint (que vive em PYDEPS_MARTA, não no env conda) →
++        # 'No module named pylint' → returncode!=0 → TODOS os testes marcados como
++        # syntax_error → 0 salvos → baseline inteira vazia. (bug encontrado 2026-07)
++        command = f'PYTHONPATH={root_dir}:$PYTHONPATH {user_python_path} -m pylint --errors-only --init-hook="import sys; sys.path.append(\'{root_dir}\')" {self.test_path}'
+ 
+         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+         if result.returncode == 0:
+-- 
+2.55.0
+

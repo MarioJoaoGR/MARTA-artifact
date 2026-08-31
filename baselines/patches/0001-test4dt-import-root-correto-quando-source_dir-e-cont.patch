@@ -1,0 +1,288 @@
+From e6b8804a21d287dbd7809609957c0d5b65e5e773 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Tue, 23 Jun 2026 00:55:40 +0100
+Subject: [PATCH 01/11] test4dt: import root correto quando source_dir e
+ container (ansible/lib, black/src)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Mesmos bugs do MARTA (test4dt e o fork base). So ansible/black afetados:
+  - targeting exato (mod_name in targets) falhava (prefixo lib/src) → 0 testes
+  - testes gerados falhavam no import (conftest+pylint com root_dir; mod_name com
+    prefixo nao importavel)
+
+Fix (NO-OP nos 25 normais — source_dir == pacote):
+  - ProjectMessage: deteta container → import_root, _src_prefix
+  - FileMessage.import_name: mod_name sem prefixo do container
+  - _targeted_file_messages: match tambem sem prefixo (= fix MARTA 16529eae)
+  - conftest: sys.path.append(import_root)
+  - find_syntax_error (pylint): PYTHONPATH/sys.path = import_root (senao E0401
+    rejeitava testes validos antes do pytest)
+  - prompts (1 em message, 5 em testcase): usam import_name
+
+So fixes de CORRECAO; nenhuma otimizacao (#5) — baseline mantem-se 'burra'.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/message.py  | 77 ++++++++++++++++++++++++++++++++++++++++-----
+ test4dt/testcase.py | 42 ++++++++++++++++++++-----
+ 2 files changed, 103 insertions(+), 16 deletions(-)
+
+diff --git a/test4dt/message.py b/test4dt/message.py
+index 3d844b6..4d72aa6 100644
+--- a/test4dt/message.py
++++ b/test4dt/message.py
+@@ -15,6 +15,7 @@ from test4dt.gptapi import model
+ from test4dt.testcase import TestManager
+ from test4dt.utils import *
+ from test4dt.recorder import recoder
++from test4dt.config import config
+ 
+ 
+ 
+@@ -22,6 +23,19 @@ class ProjectMessage:
+     def __init__(self, root_dir: str, source_dir: str, dir_type='Test4DT_tests'):
+         self.root_dir: str = root_dir
+         self.source_dir = source_dir
++
++        # Raiz de import. Se source_dir for um CONTAINER (sem __init__.py — ex.:
++        # ansible/lib, black/src), os módulos só são importáveis a partir de
++        # root_dir/source_dir e o mod_name leva o prefixo do container que NÃO
++        # faz parte do import real. Se for o próprio pacote (codetiming/),
++        # import_root == root_dir → inalterado nos 25 projetos normais.
++        _src_full = os.path.join(self.root_dir, self.source_dir) if self.source_dir else self.root_dir
++        self.source_is_container = bool(self.source_dir) and \
++            not os.path.exists(os.path.join(_src_full, '__init__.py'))
++        self.import_root = _src_full if self.source_is_container else self.root_dir
++        self._src_prefix = (self.source_dir.replace(os.path.sep, '.').strip('.') + '.') \
++            if self.source_is_container else ''
++
+         self.dir_type: str = dir_type
+         self.file_messages: List[FileMessage] = []
+         self.cg_edges: List[CGEdge] = []
+@@ -53,7 +67,11 @@ class ProjectMessage:
+         self.embedding_class_summary()
+         function_database.init(self)
+         self.init_test_path(self.dir_type)
+-        self.coverage = MyCoverage(self.root_dir, self.dir_type, self.source_dir)
++        self.coverage = MyCoverage(
++            self.root_dir,
++            os.path.join(get_output_root(self.root_dir), self.dir_type),
++            self.source_dir,
++        )
+ 
+ 
+     def generate_once(self):
+@@ -99,14 +117,43 @@ class ProjectMessage:
+         return covered_line, uncovered_line, covered_branch, uncovered_branch
+ 
+ 
++    def _targeted_file_messages(self):
++        """Return file_messages filtered by projects.json when run_benchmark=True.
++        Returns the full list if filtering doesn't apply."""
++        if not config.run_benchmark:
++            return self.file_messages
++        try:
++            with open('projects.json', 'r') as f:
++                projects = json.load(f)
++        except FileNotFoundError:
++            return self.file_messages
++        project = self.root_dir.split(os.path.sep)[-1]
++        if project not in projects:
++            return self.file_messages
++        targets = set(projects[project])
++        # mod_name é relativo a root_dir → inclui o prefixo do source_dir. Em
++        # containers (ansible→lib, black→src) o alvo CM não tem esse prefixo
++        # ('ansible.cli.adhoc') → match exato falhava (0 testes). Casar também
++        # sem o prefixo source_dir (igual ao fix do MARTA).
++        src_prefix = getattr(self, '_src_prefix', '')
++
++        def _hit(name):
++            if name in targets:
++                return True
++            return bool(src_prefix) and name.startswith(src_prefix) \
++                and name[len(src_prefix):] in targets
++
++        return [fm for fm in self.file_messages if _hit(fm.mod_name)]
++
+     async def generate_test_case(self):
++        targeted = self._targeted_file_messages()
+         num = 0
+-        for file_message in self.file_messages:
++        for file_message in targeted:
+             for _ in file_message.functions:
+                     num += 1
+         with tqdm(total=num, desc=f"Generate test cases") as pbar:
+             tasks = []
+-            for file_message in self.file_messages:
++            for file_message in targeted:
+                 for function in file_message.functions:
+                     tasks.append(self.fetch_data(function, pbar))
+             await asyncio.gather(*tasks)
+@@ -118,13 +165,17 @@ class ProjectMessage:
+ 
+ 
+     def init_test_path(self, dir_type):
+-        conf_content = f"import sys\n\ndef pytest_configure(config):\n    sys.path.append(\'{self.root_dir}\')"
+-        test_dir = self.root_dir + os.path.sep + dir_type
++        out_root = get_output_root(self.root_dir)
++        # import_root == root_dir nos projetos normais; nos containers (ansible/
++        # lib, black/src) é root_dir/source_dir, para os módulos serem importáveis
++        # pelo nome real e os imports internos do pacote resolverem.
++        conf_content = f"import sys\n\ndef pytest_configure(config):\n    sys.path.append(\'{self.import_root}\')"
++        test_dir = out_root + os.path.sep + dir_type
+         if not os.path.exists(test_dir):
+             os.makedirs(test_dir, exist_ok=True)
+-            with open(self.root_dir + os.path.sep + dir_type + os.path.sep + '__init__.py', 'w'):
++            with open(out_root + os.path.sep + dir_type + os.path.sep + '__init__.py', 'w'):
+                 pass
+-            with open(self.root_dir + os.path.sep + dir_type + os.path.sep + 'conftest.py', 'w') as f:
++            with open(out_root + os.path.sep + dir_type + os.path.sep + 'conftest.py', 'w') as f:
+                 f.write(conf_content)
+         for file_message in self.file_messages:
+             for function in file_message.functions:
+@@ -337,6 +388,16 @@ class FileMessage:
+         self.extract_classes_functions_with_comments(file_path)
+         self.father = None
+ 
++    @property
++    def import_name(self):
++        """Nome importável do módulo (vai nos imports dos testes gerados).
++        Igual ao mod_name, exceto em source_dir container (lib/src): tira o
++        prefixo do container ('lib.ansible.cli.adhoc' → 'ansible.cli.adhoc')."""
++        prefix = getattr(self.project, '_src_prefix', '')
++        if prefix and self.mod_name.startswith(prefix):
++            return self.mod_name[len(prefix):]
++        return self.mod_name
++
+ 
+     def find_readme(self):
+         if self.father is not None:
+@@ -413,7 +474,7 @@ class ClassMessage:
+         return class_stub + body_source
+ 
+     def get_code_with_summary(self):
+-        define_code = f"# mod: {self.file.mod_name}"
++        define_code = f"# mod: {self.file.import_name}"
+         define_code += self.class_code
+         for function in self.functions:
+             define_code += function.get_code_with_summary() + '\n'
+diff --git a/test4dt/testcase.py b/test4dt/testcase.py
+index f7db904..277270e 100644
+--- a/test4dt/testcase.py
++++ b/test4dt/testcase.py
+@@ -8,7 +8,7 @@ from typing import List
+ from test4dt.embedding import function_database
+ from test4dt.gptapi import model
+ from test4dt.recorder import recoder
+-from test4dt.utils import get_code
++from test4dt.utils import get_code, get_output_root
+ 
+ 
+ class TestManager:
+@@ -29,7 +29,7 @@ class TestManager:
+ 
+     def get_directory(self, dir_type):
+         root_dir = self.func.file.root_dir
+-        return root_dir + os.path.sep + dir_type
++        return get_output_root(root_dir) + os.path.sep + dir_type
+ 
+     def init_test_single_path(self):
+         if not os.path.exists(self.directory):
+@@ -43,6 +43,16 @@ class TestManager:
+             if len(self.coverage.missing_lines) == 0:
+                 return
+         test_path = self.get_test_path()
++        # Resume granularity: se o teste para esta função já existe em disco
++        # (de uma run anterior interrompida por timeout/SIGTERM ex. no SLURM),
++        # carrega-o sem voltar a chamar o LLM. Equivale ao mecanismo
++        # [SKIP] da MARTA (testcase_react.py:112-117), simplificado por o
++        # dataset CM ser imutável (não há hash-check necessário).
++        if os.path.exists(test_path) and self.count == 0:
++            print(f"[SKIP] Teste para '{self.func.func_name}' já existe em disco, a saltar...")
++            self.testcases.append(Testcase.load_existing(self, self.func, test_path))
++            self.count += 1
++            return
+         await self.func.judge_params()
+         if self.get_first_testcase() != "" and self.coverage is not None:
+             code = await self.generate_test_case_evol()
+@@ -80,14 +90,14 @@ Analyze the target function before writing the test cases.
+         user_prompt = f"""Here is a Python function and its module name. 
+ Generate a pytest test case file ensuring proper assertions:
+ 
+-# Module: {self.func.file.mod_name}
++# Module: {self.func.file.import_name}
+ **Do not re-implement the function.** Instead, import it correctly and write meaningful test cases.
+ 
+ Function Code: 
+ 
+ {self.func.get_source_code()}
+ """
+-        return f'# Module: {self.func.file.mod_name}' + get_code(await model.aask(sys_prompt, user_prompt))
++        return f'# Module: {self.func.file.import_name}' + get_code(await model.aask(sys_prompt, user_prompt))
+ 
+     def get_coverage_message_code(self):
+         lines = self.func.code.splitlines()
+@@ -119,7 +129,7 @@ If any uncovered lines indicate potential edge cases, ensure those are explicitl
+ and a list of uncovered lines. Please generate additional `pytest` test cases to increase coverage, 
+ ensuring that all assertions are correct.  
+ 
+-# Module: {self.func.file.mod_name}
++# Module: {self.func.file.import_name}
+ 
+ **Function source code:**  
+ ```python
+@@ -235,14 +245,14 @@ No Additional Explanations: Only output the test file content without extra comm
+         user_prompt = f"""Here is a Python function and its module name. 
+ Generate a pytest test case file ensuring proper assertions:
+ 
+-# Module: {self.func.file.mod_name}
++# Module: {self.func.file.import_name}
+ **Do not re-implement the function.** Instead, import it correctly and write meaningful test cases.
+ 
+ Function Code: 
+ 
+ {self.func.get_source_code()}
+ """
+-        return f'# Module: {self.func.file.mod_name}' + get_code(await model.aask(sys_prompt, user_prompt))
++        return f'# Module: {self.func.file.import_name}' + get_code(await model.aask(sys_prompt, user_prompt))
+ 
+ 
+ class Testcase:
+@@ -253,6 +263,18 @@ class Testcase:
+         self.error_message = ""
+         self.set_code(code)
+ 
++    @classmethod
++    def load_existing(cls, test_manager, func, test_path: str):
++        """Referencia um ficheiro de teste já existente em disco sem o
++        sobrescrever. Usado para retomar runs interrompidas (ex. SLURM 48h)
++        sem voltar a invocar o LLM."""
++        instance = cls.__new__(cls)
++        instance.test_manager = test_manager
++        instance.test_path = test_path
++        instance.func = func
++        instance.error_message = ""
++        return instance
++
+     def delete(self):
+         try:
+             os.remove(self.test_path)
+@@ -271,7 +293,11 @@ class Testcase:
+             f.write(code)
+ 
+     def find_syntax_error(self):
+-        root_dir = self.func.file.root_dir
++        # import_root: nos containers (ansible/lib, black/src) o pylint precisa da
++        # raiz de import correta — com root_dir acusava import-error (E0401) e
++        # rejeitava testes válidos antes de chegarem ao pytest. == root_dir nos
++        # 25 projetos normais.
++        root_dir = getattr(self.func.file.project, 'import_root', self.func.file.root_dir)
+         user_python_path = os.getenv('USER_PYTHON_PATH')
+         command = f'PYTHONPATH={root_dir} {user_python_path} -m pylint --errors-only --init-hook="import sys; sys.path.append(\'{root_dir}\')" {self.test_path}'
+ 
+-- 
+2.55.0
+

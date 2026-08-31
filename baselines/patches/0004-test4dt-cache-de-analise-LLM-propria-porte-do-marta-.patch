@@ -1,0 +1,270 @@
+From 50d11061b93d6accfc68819d5bb256e8c26c71e9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sun, 28 Jun 2026 05:43:44 +0100
+Subject: [PATCH 04/11] test4dt: cache de analise LLM propria (porte do marta,
+ especifica da baseline)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A baseline re-analisava de raiz cada projeto (~13h no thonny, sem cache) → em
+restarts do auto-chain re-fazia tudo. Porta o mecanismo de cache do marta, mas
+GUARDA A ANALISE PROPRIA do test4dt (na localizacao dele, Results_Test4PyBaseline/
+<proj>/) — NAO reutiliza a do marta (zero contaminacao, baseline puro).
+
+- utils.py: compute_source_hash, save/load_analysis_cache (+ cg cache funcs e
+  stubs, nao usados — ver abaixo).
+- message.py: collect_function_analysis/collect_class_analysis/apply_analysis_cache
+  (campos done_what/what_todo/summary/judge/how_to_use — iguais ao marta, fork) +
+  integracao no init().
+- SO a analise LLM e cacheada; o grafo (PyCG) recomputa-se sempre (rapido, e o
+  import_manager do PyCG do test4dt nao tem .import_graph como o do marta).
+
+Validado: sintaxe + round-trip save/load + invalidacao por source_hash.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/message.py |  66 +++++++++++++++++++++--
+ test4dt/utils.py   | 131 +++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 193 insertions(+), 4 deletions(-)
+
+diff --git a/test4dt/message.py b/test4dt/message.py
+index 4d72aa6..ded7295 100644
+--- a/test4dt/message.py
++++ b/test4dt/message.py
+@@ -49,6 +49,11 @@ class ProjectMessage:
+         for file in files:
+             self.file_messages.append(FileMessage(self.root_dir, file, self))
+ 
++        # source_hash p/ validar a cache de ANÁLISE (a parte cara, LLM). O grafo
++        # (PyCG) recomputa-se sempre — é rápido (minutos) e o import_manager do
++        # PyCG do test4dt não tem .import_graph (difere do marta), por isso não o
++        # cacheamos; o ganho grande (~13h) é a análise LLM, essa sim cacheada.
++        source_hash = compute_source_hash(self.root_dir, self.source_dir)
+         cg = CallGraphGenerator(files, self.root_dir, -1, 'call-graph')
+         cg.analyze()
+         formatter = formats.Simple(cg)
+@@ -60,10 +65,21 @@ class ProjectMessage:
+         self.parseCG(output)
+ 
+         await self.dir_message.init()
+-        await self.analyze_functions()
+-        await self.get_total_what_todo()
+-        await self.generate_summary()
+-        await self.analyze_each_class()
++
++        safe_model = os.environ.get('SAFE_MODEL', '')
++        analysis = load_analysis_cache(self.root_dir, self.source_dir, source_hash, safe_model)
++        if analysis is not None:
++            print(f"🚀 [CACHE HIT] Análise de funções/classes carregada (modelo={safe_model or 'default'}). A saltar análise LLM.")
++            self.apply_analysis_cache(analysis)
++        else:
++            print(f"⚠️ [CACHE MISS] Sem cache de análise (modelo={safe_model or 'default'}). A analisar funções e classes (LLM)...")
++            await self.analyze_functions()
++            await self.get_total_what_todo()
++            await self.generate_summary()
++            await self.analyze_each_class()
++            save_analysis_cache(self.root_dir, self.source_dir, source_hash,
++                                self.collect_function_analysis(), self.collect_class_analysis(),
++                                safe_model)
+         self.embedding_class_summary()
+         function_database.init(self)
+         self.init_test_path(self.dir_type)
+@@ -98,6 +114,48 @@ class ProjectMessage:
+                 return file_message
+         return None
+ 
++    def collect_function_analysis(self) -> dict:
++        """Snapshot dos campos LLM por função (chave = module_name)."""
++        functions = {}
++        for file_message in self.file_messages:
++            for function in file_message.functions:
++                functions[function.module_name] = {
++                    "done_what": function.done_what,
++                    "what_todo": function.what_todo,
++                    "summary": function.summary,
++                    "judge": function.judge,
++                }
++        return functions
++
++    def collect_class_analysis(self) -> dict:
++        """Snapshot dos campos LLM por classe (chave = full_name)."""
++        classes = {}
++        for file_message in self.file_messages:
++            for class_message in file_message.classes:
++                classes[class_message.full_name] = {
++                    "summary": class_message.summary,
++                    "how_to_use": class_message.how_to_use,
++                }
++        return classes
++
++    def apply_analysis_cache(self, analysis: dict) -> None:
++        """Restaura a análise LLM em cache para os objetos função/classe."""
++        functions = analysis.get("functions", {})
++        classes = analysis.get("classes", {})
++        for file_message in self.file_messages:
++            for function in file_message.functions:
++                cached = functions.get(function.module_name)
++                if cached is not None:
++                    function.done_what = cached.get("done_what")
++                    function.what_todo = cached.get("what_todo")
++                    function.summary = cached.get("summary")
++                    function.judge = cached.get("judge")
++            for class_message in file_message.classes:
++                cached = classes.get(class_message.full_name)
++                if cached is not None:
++                    class_message.summary = cached.get("summary")
++                    class_message.how_to_use = cached.get("how_to_use")
++
+ 
+     def get_coverage_message(self):
+         covered_line = 0
+diff --git a/test4dt/utils.py b/test4dt/utils.py
+index 1748380..ff75af0 100644
+--- a/test4dt/utils.py
++++ b/test4dt/utils.py
+@@ -1,5 +1,23 @@
+ import ast
+ import os
++import json
++import hashlib
++
++
++def get_output_root(root_dir: str) -> str:
++    """Devolve a pasta-base onde devem ser escritos os outputs.
++
++    Se ``config.output_dir`` estiver definido (via --output_dir), devolve
++    ``{config.output_dir}/{project_name}/``. Caso contrário devolve ``root_dir``
++    (legacy: escreve dentro do source do projeto).
++    """
++    from test4dt.config import config
++    if config.output_dir:
++        project_name = os.path.basename(root_dir.rstrip(os.path.sep))
++        path = os.path.join(config.output_dir, project_name)
++        os.makedirs(path, exist_ok=True)
++        return path
++    return root_dir
+ 
+ 
+ def get_code(code: str):
+@@ -46,3 +64,116 @@ def get_mod_name(entry, pkg):
+ 
+ def to_mod_name(name):
+     return os.path.splitext(name)[0].replace("/", ".")
++
++
++# ───────────────────────────────────────────────────────────────────────────
++# Cache de análise (porte do mecanismo do marta, ESPECÍFICO da baseline).
++# Guarda a análise PRÓPRIA do test4dt (grafo + summaries LLM) na localização
++# DELE (Results_Test4PyBaseline/<proj>/), para não re-analisar em restarts do
++# auto-chain. NÃO reutiliza a cache do marta → zero contaminação, baseline puro.
++# ───────────────────────────────────────────────────────────────────────────
++def compute_source_hash(root_dir: str, source_dir: str) -> str:
++    """MD5 de todos os .py sob source_dir, ordenados para determinismo."""
++    hasher = hashlib.md5()
++    source_path = os.path.join(root_dir, source_dir)
++    for dir_path, dirs, filenames in os.walk(source_path):
++        dirs.sort()
++        for filename in sorted(filenames):
++            if filename.endswith('.py'):
++                filepath = os.path.join(dir_path, filename)
++                hasher.update(filepath.encode())
++                with open(filepath, 'rb') as f:
++                    hasher.update(f.read())
++    return hasher.hexdigest()
++
++
++def save_cg_cache(root_dir: str, source_dir: str, source_hash: str,
++                  cg_output: dict, class_manager, import_manager) -> None:
++    out_root = get_output_root(root_dir)
++    os.makedirs(out_root, exist_ok=True)
++    metadata = {"source_hash": source_hash, "source_dir": source_dir}
++    with open(os.path.join(out_root, 'cache_metadata.json'), 'w') as f:
++        json.dump(metadata, f, indent=2)
++    class_mro = {name: node.mro for name, node in class_manager.get_classes().items()}
++    imports = {mod: list(data["imports"]) for mod, data in import_manager.import_graph.items()}
++    cache_data = {"cg_output": cg_output, "class_mro": class_mro, "imports": imports}
++    with open(os.path.join(out_root, 'call_graph.json'), 'w') as f:
++        json.dump(cache_data, f, indent=2)
++
++
++def load_cg_cache(root_dir: str, source_dir: str, current_hash: str):
++    out_root = get_output_root(root_dir)
++    meta_path = os.path.join(out_root, 'cache_metadata.json')
++    cg_path = os.path.join(out_root, 'call_graph.json')
++    if not os.path.exists(meta_path) or not os.path.exists(cg_path):
++        return None
++    try:
++        with open(meta_path, 'r') as f:
++            metadata = json.load(f)
++        if metadata.get("source_hash") != current_hash or metadata.get("source_dir") != source_dir:
++            return None
++        with open(cg_path, 'r') as f:
++            return json.load(f)
++    except Exception:
++        return None
++
++
++def _analysis_cache_path(root_dir: str, model_suffix: str) -> str:
++    filename = f"analysis_cache_{model_suffix}.json" if model_suffix else "analysis_cache.json"
++    return os.path.join(get_output_root(root_dir), filename)
++
++
++def save_analysis_cache(root_dir: str, source_dir: str, source_hash: str,
++                        functions: dict, classes: dict, model_suffix: str = "") -> None:
++    cache_data = {
++        "source_hash": source_hash,
++        "source_dir": source_dir,
++        "model": model_suffix,
++        "functions": functions,
++        "classes": classes,
++    }
++    with open(_analysis_cache_path(root_dir, model_suffix), 'w') as f:
++        json.dump(cache_data, f, indent=2)
++
++
++def load_analysis_cache(root_dir: str, source_dir: str, current_hash: str,
++                        model_suffix: str = ""):
++    path = _analysis_cache_path(root_dir, model_suffix)
++    if not os.path.exists(path):
++        return None
++    try:
++        with open(path, 'r') as f:
++            data = json.load(f)
++        if data.get("source_hash") != current_hash or data.get("source_dir") != source_dir:
++            return None
++        return data
++    except Exception:
++        return None
++
++
++class CachedClassNode:
++    def __init__(self, mro):
++        self.mro = mro
++
++
++class CachedImportManager:
++    def __init__(self, imports_data: dict):
++        self._imports = {mod: set(imports) for mod, imports in imports_data.items()}
++
++    def get_imports(self, modname):
++        return self._imports.get(modname, [])
++
++
++class CachedClassManager:
++    def __init__(self, class_mro_data: dict):
++        self._classes = {name: CachedClassNode(mro) for name, mro in class_mro_data.items()}
++
++    def get_classes(self):
++        return self._classes
++
++
++class CachedCG:
++    """Stub leve que imita o CallGraphGenerator para uso pós-cache."""
++    def __init__(self, import_manager: CachedImportManager, class_manager: CachedClassManager):
++        self.import_manager = import_manager
++        self.class_manager = class_manager
+-- 
+2.55.0
+

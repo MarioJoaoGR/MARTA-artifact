@@ -1,0 +1,56 @@
+From 516c303b0ea5cb5134e83e53e3a597ea719241fd Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sat, 27 Jun 2026 00:41:45 +0100
+Subject: [PATCH 02/11] test4dt: neutralizar telemetria posthog do chromadb
+ (KeyError matava runs)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Mesmo patch do marta/embedding.py: a telemetria posthog do chromadb da KeyError
+em batched_events durante queries RAG em thread (matou o httpie no marta aos
+170min). Settings(anonymized_telemetry=False) + monkey-patch da .capture().
+Os avisos 'capture() takes 1 positional argument' ja apareciam no log da
+baseline → vulneravel ao mesmo crash.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/embedding.py | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/test4dt/embedding.py b/test4dt/embedding.py
+index c0b156d..855f712 100644
+--- a/test4dt/embedding.py
++++ b/test4dt/embedding.py
+@@ -6,6 +6,20 @@ from transformers import AutoTokenizer, AutoModel
+ import torch
+ from typing import List
+ import chromadb
++from chromadb.config import Settings
++# Bulletproof: a telemetria posthog do chromadb dá KeyError em batched_events
++# (matou o httpie no marta aos 170min) e o Settings(anonymized_telemetry=False)
++# sozinho NÃO a desliga (os avisos "capture() takes 1 positional argument"
++# persistem — singleton global). Neutralizar a .capture() diretamente. Sem
++# efeito funcional (é só analytics).
++try:
++    import chromadb.telemetry.product.posthog as _cph
++    for _n in dir(_cph):
++        _c = getattr(_cph, _n)
++        if isinstance(_c, type) and hasattr(_c, "capture"):
++            _c.capture = lambda *a, **k: None
++except Exception:
++    pass
+ 
+ 
+ class HuggingFaceEmbedder(Embeddings):
+@@ -119,5 +133,5 @@ class FunctionDatabase:
+ 
+ load_dotenv()
+ embedder = HuggingFaceEmbedder(model_name_or_path=os.getenv('TRANSFORMER_PATH') or '')
+-client = chromadb.Client()
++client = chromadb.Client(Settings(anonymized_telemetry=False))
+ function_database = FunctionDatabase()
+-- 
+2.55.0
+

@@ -1,0 +1,63 @@
+From 91d64b7ae8170d40061d4e0f65d163986a9e09d9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sun, 28 Jun 2026 05:46:58 +0100
+Subject: [PATCH 05/11] test4dt: cachear tambem o GRAFO (PyCG), nao so a
+ analise LLM
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Afinal o import_manager do PyCG do test4dt TEM import_graph com a mesma
+estrutura do marta ({mod:{filename,imports}}) e as class nodes tem .mro — o
+grep anterior cortou no head e levou-me a remover por engano. save/load_cg_cache
+e 100% compativel. Agora a baseline cacheia grafo E analise → restarts saltam
+ambos.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/message.py | 27 +++++++++++++++++++--------
+ 1 file changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/test4dt/message.py b/test4dt/message.py
+index ded7295..e851c2e 100644
+--- a/test4dt/message.py
++++ b/test4dt/message.py
+@@ -49,15 +49,26 @@ class ProjectMessage:
+         for file in files:
+             self.file_messages.append(FileMessage(self.root_dir, file, self))
+ 
+-        # source_hash p/ validar a cache de ANÁLISE (a parte cara, LLM). O grafo
+-        # (PyCG) recomputa-se sempre — é rápido (minutos) e o import_manager do
+-        # PyCG do test4dt não tem .import_graph (difere do marta), por isso não o
+-        # cacheamos; o ganho grande (~13h) é a análise LLM, essa sim cacheada.
++        # Cache de GRAFO (PyCG) + ANÁLISE LLM. O import_manager do PyCG do test4dt
++        # tem o mesmo import_graph ({mod:{"imports":set()}}) e as class nodes têm
++        # .mro, tal como o marta → save/load_cg_cache é compatível.
+         source_hash = compute_source_hash(self.root_dir, self.source_dir)
+-        cg = CallGraphGenerator(files, self.root_dir, -1, 'call-graph')
+-        cg.analyze()
+-        formatter = formats.Simple(cg)
+-        output = formatter.generate()
++        cached = load_cg_cache(self.root_dir, self.source_dir, source_hash)
++        if cached is not None:
++            print("🚀 [CACHE HIT] Grafo carregado. A saltar análise estática.")
++            output = cached["cg_output"]
++            cg = CachedCG(
++                CachedImportManager(cached["imports"]),
++                CachedClassManager(cached["class_mro"]),
++            )
++        else:
++            print("⚠️ [CACHE MISS] A iniciar análise estática (PyCG)...")
++            cg = CallGraphGenerator(files, self.root_dir, -1, 'call-graph')
++            cg.analyze()
++            formatter = formats.Simple(cg)
++            output = formatter.generate()
++            save_cg_cache(self.root_dir, self.source_dir, source_hash,
++                          output, cg.class_manager, cg.import_manager)
+         self.analyze_function_members()
+         self.complete_file_imports(cg)
+         self.parseExtend(cg.class_manager.get_classes())
+-- 
+2.55.0
+

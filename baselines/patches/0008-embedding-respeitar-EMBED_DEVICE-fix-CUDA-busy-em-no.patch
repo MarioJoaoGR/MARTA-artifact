@@ -1,0 +1,38 @@
+From bb56f1f2e653c0ad5a8ca314aeecbbd49dec221c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sun, 19 Jul 2026 13:50:26 +0100
+Subject: [PATCH 08/11] embedding: respeitar EMBED_DEVICE (fix CUDA busy em nos
+ Exclusive-Process)
+
+Mesma adaptacao de infra que o marta/embedding.py: EMBED_DEVICE=cpu no Deucalion
+porque o Ollama agarra a GPU primeiro e em nos com compute mode Exclusive-Process
+o torch morre no import ('CUDA device busy or unavailable', job 1758042/gnx527,
+9 projetos falhados em ~5s). Nao muda o comportamento do tool - so o device onde
+os embeddings sao calculados.
+---
+ test4dt/embedding.py | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/test4dt/embedding.py b/test4dt/embedding.py
+index 855f712..78bdc1b 100644
+--- a/test4dt/embedding.py
++++ b/test4dt/embedding.py
+@@ -50,7 +50,13 @@ class HuggingFaceEmbedder(Embeddings):
+         self.embed_instruction = embed_instruction
+         self.show_progress = show_progress
+         self.encode_kwargs = encode_kwargs
+-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++        # EMBED_DEVICE força o device (== marta/embedding.py — adaptação de infra,
++        # não muda o tool): no Deucalion 'cpu', porque em nós com GPU em modo
++        # Exclusive-Process o Ollama agarra a GPU primeiro e o torch morre com
++        # "CUDA-capable device(s) is/are busy or unavailable" (job 1758042, gnx527
++        # — os 9 projetos falharam no import em ~5s cada).
++        _dev = os.environ.get("EMBED_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
++        self.device = torch.device(_dev)
+         self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, local_files_only=True)
+         self.model = AutoModel.from_pretrained(model_name_or_path, local_files_only=True).to(self.device)
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,64 @@
+From 91a26b75986510ba8dba1660fc7f86c0efa79ff9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Tue, 28 Jul 2026 13:58:45 +0100
+Subject: [PATCH 11/11] robustez: cwd resiliente na validacao (safe_cwd)
+
+Simetrico ao fix do marta: testes destrutivos podem apagar o cwd do processo,
+fazendo o pytest/pylint nem arrancar e descartando em cascata todos os testes
+seguintes do projeto. safe_cwd() recria o diretorio se desaparecer.
+---
+ test4dt/testcase.py | 23 +++++++++++++++++++++--
+ 1 file changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/test4dt/testcase.py b/test4dt/testcase.py
+index f2599a4..4dd061f 100644
+--- a/test4dt/testcase.py
++++ b/test4dt/testcase.py
+@@ -11,6 +11,24 @@ from test4dt.recorder import recoder
+ from test4dt.utils import get_code, get_output_root
+ 
+ 
++def safe_cwd():
++    """cwd garantidamente existente para os subprocessos de validação.
++
++    Testes gerados podem ser DESTRUTIVOS e apagar o diretório onde o processo
++    corre; depois disso o pytest nem arranca ('FileNotFoundError ... in cwd') e
++    todos os testes seguintes do projeto são descartados em cascata. Mesmo fix
++    aplicado ao marta (testcase_react.safe_cwd) — infra de validação, simétrico,
++    não altera a geração.
++    """
++    try:
++        return os.getcwd()
++    except (FileNotFoundError, OSError):
++        d = os.environ.get("MARTA_SAFE_CWD") or "/tmp/test4dt_cwd"
++        os.makedirs(d, exist_ok=True)
++        os.chdir(d)
++        return d
++
++
+ class TestManager:
+     def __init__(self, func, dir_type):
+         self.func = func
+@@ -314,7 +332,7 @@ class Testcase:
+         # matando o RUN INTEIRO (ansible morreu a 994/1939 após 13.5h, job de
+         # 2026-07-20). Robustez de infra — não altera a geração.
+         result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+-                                text=True, errors='replace')
++                                text=True, errors='replace', cwd=safe_cwd())
+         if result.returncode == 0:
+             return False
+         else:
+@@ -327,7 +345,8 @@ class Testcase:
+     def find_assert_error(self):
+         try:
+             result = subprocess.run([os.getenv('USER_PYTHON_PATH'), '-m', 'pytest', self.test_path, '--json-report', '--json-report-file=pytest_report.json'],
+-                                    capture_output=True, text=True, errors='replace', timeout=10)
++                                    capture_output=True, text=True, errors='replace', timeout=10,
++                                    cwd=safe_cwd())
+         except subprocess.TimeoutExpired:
+             self.error_message = "time exceeded"
+             recoder.score.add_assertion_error_type('TimeoutExpired')
+-- 
+2.55.0
+

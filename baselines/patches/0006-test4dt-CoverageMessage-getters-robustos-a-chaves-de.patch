@@ -1,0 +1,44 @@
+From cb2c4a2982e97709b6dd6261eeb074b9b1daa596 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sat, 4 Jul 2026 15:42:37 +0100
+Subject: [PATCH 06/11] test4dt: CoverageMessage getters robustos a chaves de
+ branch (mesmo bug, 2o sitio)
+
+O isort re-falhou: recorder ja estava .get, mas get_coverage_message->
+CoverageMessage.get_covered_branches() acedia self.summary['covered_branches']
+direto -> mesmo KeyError. .get(...,0) nos 4 getters (missing/covered lines+branches).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/coverage_message.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/test4dt/coverage_message.py b/test4dt/coverage_message.py
+index 0244057..3f8398a 100644
+--- a/test4dt/coverage_message.py
++++ b/test4dt/coverage_message.py
+@@ -31,16 +31,16 @@ class CoverageMessage:
+         self.summary = summary
+ 
+     def get_missing_lines(self):
+-        return self.summary['missing_lines']
++        return self.summary.get('missing_lines', 0)
+ 
+     def get_covered_lines(self):
+-        return self.summary['covered_lines']
++        return self.summary.get('covered_lines', 0)
+ 
+     def get_missing_branches(self):
+-        return self.summary['missing_branches']
++        return self.summary.get('missing_branches', 0)
+ 
+     def get_covered_branches(self):
+-        return self.summary['covered_branches']
++        return self.summary.get('covered_branches', 0)
+ 
+     def format_missing_lines(self):
+         if not self.missing_lines:
+-- 
+2.55.0
+

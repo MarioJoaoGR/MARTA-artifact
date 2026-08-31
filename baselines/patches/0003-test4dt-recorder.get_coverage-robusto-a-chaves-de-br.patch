@@ -1,0 +1,66 @@
+From 8e6c70e4c2202fd4be67acb01dc2651ab21a3884 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?M=C3=A1rio=20Jo=C3=A3o=20Gomes=20Ribeiro?=
+ <160857014+MarioJoaoGR@users.noreply.github.com>
+Date: Sat, 27 Jun 2026 15:08:26 +0100
+Subject: [PATCH 03/11] test4dt: recorder.get_coverage robusto a chaves de
+ branch em falta (.get)
+
+KeyError 'covered_branches' crashava o projeto inteiro no fim (isort) quando um
+ficheiro sem branches nao trazia a chave no JSON do coverage.py. .get(...,0)
+em vez de acesso direto. Fix de robustez (nao rebentar), nao otimizacao.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+---
+ test4dt/recorder.py | 28 ++++++++++++++++++----------
+ 1 file changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/test4dt/recorder.py b/test4dt/recorder.py
+index ec019af..c8297eb 100644
+--- a/test4dt/recorder.py
++++ b/test4dt/recorder.py
+@@ -17,12 +17,15 @@ class Recoder:
+ 
+     def end(self, project_name):
+         end_time = time.time()
+-        if not os.path.exists('run_results'):
+-            try:
+-                os.mkdir('run_results')
+-            except FileExistsError:
+-                pass
+-        with open('./run_results/'+project_name+'.json', 'w') as f:
++        # Se config.output_dir definido, escreve em {output_dir}/{project_name}/run_results/.
++        # Caso contrário, mantém comportamento legacy (./run_results/ no CWD).
++        base_dir = (
++            os.path.join(config.output_dir, project_name, 'run_results')
++            if config.output_dir
++            else 'run_results'
++        )
++        os.makedirs(base_dir, exist_ok=True)
++        with open(os.path.join(base_dir, project_name + '.json'), 'w') as f:
+             json.dump({
+                 'time': end_time - self.start_time,
+                 'times': self.times,
+@@ -129,11 +132,16 @@ class Score:
+         for file_name, file in coverage['files'].items():
+             module = file_name[:-3].replace("/", ".")
+             if module in modules:
++                # .get com default 0: ficheiros sem branches (ou sem statements)
++                # podem não trazer todas as chaves no JSON do coverage.py → o
++                # acesso direto dava KeyError 'covered_branches' e crashava o
++                # projeto inteiro no fim (ex.: isort). 0 branches = 0 cobertos.
++                summary = file['summary']
+                 result[module] = {
+-                    'covered_lines': file['summary']['covered_lines'],
+-                    'covered_branches': file['summary']['covered_branches'],
+-                    'num_statements': file['summary']['num_statements'],
+-                    'num_branches': file['summary']['num_branches']
++                    'covered_lines': summary.get('covered_lines', 0),
++                    'covered_branches': summary.get('covered_branches', 0),
++                    'num_statements': summary.get('num_statements', 0),
++                    'num_branches': summary.get('num_branches', 0)
+                 }
+         self.coverage.append(result)
+     
+-- 
+2.55.0
+
